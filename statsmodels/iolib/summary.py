@@ -294,6 +294,17 @@ def _getnames(self, yname=None, xname=None):
   return yname, xname
 
 
+def several(format, xs):
+  try:
+    return [format % xs]
+  except TypeError:
+    if not isinstance(xs, str):
+      return [format % x for x in xs]
+    else:
+      print("type(xs):", type(xs))
+      raise
+
+
 def summary_top(
     results, title=None, gleft=None, gright=None, yname=None, xname=None
 ):
@@ -329,7 +340,7 @@ def summary_top(
           ("Df Residuals:", lambda: [d_or_f(results.df_resid)]),
           (
               "Log-Likelihood:",
-              lambda: ["%#8.5g" % results.llf],
+              lambda: several("%#8.5g", results.llf),
           ),  # does not exist for RLM - exception
       ]
   )

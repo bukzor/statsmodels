@@ -619,6 +619,7 @@ class GLS(RegressionModel):
     # TODO: combine this with OLS/WLS loglike and add _det_sigma argument
     nobs2 = self.nobs / 2.0
     SSR = np.sum((self.wendog - np.dot(self.wexog, params)) ** 2, axis=0)
+    print("SSR:(0)", SSR.shape)
     llf = -np.log(SSR) * nobs2  # concentrated likelihood
     llf -= (1 + np.log(np.pi / nobs2)) * nobs2  # with likelihood constant
     if np.any(self.sigma):
@@ -834,6 +835,7 @@ class WLS(RegressionModel):
     """
     nobs2 = self.nobs / 2.0
     SSR = np.sum((self.wendog - np.dot(self.wexog, params)) ** 2, axis=0)
+    print("SSR(1):", SSR.shape)
     llf = -np.log(SSR) * nobs2  # concentrated likelihood
     llf -= (1 + np.log(np.pi / nobs2)) * nobs2  # with constant
     llf += 0.5 * np.sum(np.log(self.weights))
@@ -985,9 +987,10 @@ class OLS(WLS):
     nobs2 = self.nobs / 2.0
     nobs = float(self.nobs)
     resid = self.endog - np.dot(self.exog, params)
+    print("resid (SSR2):", resid)
     if hasattr(self, "offset"):
       resid -= self.offset
-    ssr = np.sum(resid ** 2)
+    ssr = np.sum(np.square(resid), axis=0)
     if scale is None:
       # profile log likelihood
       llf = -nobs2 * np.log(2 * np.pi) - nobs2 * np.log(ssr / nobs) - nobs2
@@ -1779,18 +1782,14 @@ class RegressionResults(base.LikelihoodModelResults):
     weights = getattr(model, "weights", None)
     sigma = getattr(model, "sigma", None)
     if weights is not None:
+
       ###mean = np.average(model.endog, weights=weights)
       mean = np.average(model.endog, weights=weights, axis=0)
+
       ###return np.sum(weights * (model.endog - mean) ** 2)
-      x1 = model.endog - mean
-      print("x1:", x1.shape)  # (11,) -> (11, 3)
-      x2 = x1 ** 2
-      print("x2:", x2.shape)  # (11,) -> (11, 3)
-      x31 = np.dot(np.diag(weights), x2)
-      print("x31:", x31.shape)  # (11,) -- (11,3)
-      x41 = np.sum(x31, axis=0)
-      print("x41:", x41.shape)  # 0 -> (3,)
-      return x41
+      r2 = (model.endog - mean) ** 2
+      weighted = np.dot(np.diag(weights), r2)
+      return np.sum(weighted, axis=0)
     elif sigma is not None:
       # Exactly matches WLS when sigma is diagonal
       iota = np.ones_like(model.endog)
@@ -1943,14 +1942,8 @@ class RegressionResults(base.LikelihoodModelResults):
   @cache_readonly
   def bse(self):
     """The standard errors of the parameter estimates."""
-    x0 = self.cov_params()
-    print("self.cov_params():", x0.shape)
-
-    x1 = np.diagonal(x0)
-    print("diag:", x1.shape)
-    x2 = np.sqrt(x1)
-    print("sqrt:", x2.shape)
-    return x2
+    ###return np.sqrt(np.diag(self.cov_params()))
+    return np.sqrt(np.diagonal(self.cov_params()))
 
   @cache_readonly
   def aic(self):
@@ -1960,7 +1953,11 @@ class RegressionResults(base.LikelihoodModelResults):
     For a model with a constant :math:`-2llf + 2(df\_model + 1)`. For a
     model without a constant :math:`-2llf + 2(df\_model)`.
     """
-    return -2 * self.llf + 2 * (self.df_model + self.k_constant)
+    print("self.llf:", self.llf)
+    print("self.df_model:", self.df_model)
+    result = -2 * self.llf + 2 * (self.df_model + self.k_constant)
+    print("self.aic", result.shape)
+    return result
 
   @cache_readonly
   def bic(self):
@@ -2809,8 +2806,10 @@ class RegressionResults(base.LikelihoodModelResults):
       top_left.append(("Covariance Type:", [self.cov_type]))
 
     rsquared_type = "" if self.k_constant else " (uncentered)"
+    ###for i, x in enumerate(self.aic):
+    ###  print("aic[%s]: %s", i, x)
     top_right = [
-        ("R-squared" + rsquared_type + ":", [4, 5, 6]),
+        ("R-squared" + rsquared_type + ":", several("%8.3f", self.rsquared)),
         (
             "Adj. R-squared" + rsquared_type + ":",
             several("%#8.3f", self.rsquared_adj),
@@ -2818,8 +2817,8 @@ class RegressionResults(base.LikelihoodModelResults):
         ("F-statistic:", several("%#8.4g", self.fvalue)),
         ("Prob (F-statistic):", several("%#6.3g", self.f_pvalue)),
         ("Log-Likelihood:", None),
-        ("AIC:", "%#8.4g" % self.aic),
-        ("BIC:", "%#8.4g" % self.bic),
+        ("AIC:", several("%#8.4g", self.aic)),
+        ("BIC:", several("%#8.4g", self.bic)),
     ]
 
     diagn_left = [
