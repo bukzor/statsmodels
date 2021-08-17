@@ -911,7 +911,7 @@ class Summary(object):
     None : table is attached
 
     """
-    if res.params.ndim == 1:
+    if True or res.params.ndim == 1:
       table = summary_params(
           res, yname=yname, xname=xname, alpha=alpha, use_t=use_t
       )

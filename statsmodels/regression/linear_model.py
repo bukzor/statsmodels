@@ -160,6 +160,17 @@ _fit_regularized_doc = r"""
         """
 
 
+def several(format, xs):
+  try:
+    return [format % xs]
+  except TypeError:
+    if not isinstance(xs, str):
+      return [format % x for x in xs]
+    else:
+      print("type(xs):", type(xs))
+      raise
+
+
 def _get_sigma(sigma, nobs):
   """
   Returns sigma (matrix, nobs by nobs) for GLS and the inverse of its
@@ -1751,13 +1762,15 @@ class RegressionResults(base.LikelihoodModelResults):
     is often called the standard error of the regression.
     """
     wresid = self.wresid
-    return np.dot(wresid, wresid) / self.df_resid
+    ###return np.dot(wresid, wresid) / self.df_resid
+    return np.square(wresid).sum(axis=0) / self.df_resid
 
   @cache_readonly
   def ssr(self):
     """Sum of squared (whitened) residuals."""
     wresid = self.wresid
-    return np.dot(wresid, wresid)
+    ###return np.dot(wresid, wresid)
+    return np.square(wresid).sum(axis=0)
 
   @cache_readonly
   def centered_tss(self):
@@ -1766,8 +1779,18 @@ class RegressionResults(base.LikelihoodModelResults):
     weights = getattr(model, "weights", None)
     sigma = getattr(model, "sigma", None)
     if weights is not None:
-      mean = np.average(model.endog, weights=weights)
-      return np.sum(weights * (model.endog - mean) ** 2)
+      ###mean = np.average(model.endog, weights=weights)
+      mean = np.average(model.endog, weights=weights, axis=0)
+      ###return np.sum(weights * (model.endog - mean) ** 2)
+      x1 = model.endog - mean
+      print("x1:", x1.shape)  # (11,) -> (11, 3)
+      x2 = x1 ** 2
+      print("x2:", x2.shape)  # (11,) -> (11, 3)
+      x31 = np.dot(np.diag(weights), x2)
+      print("x31:", x31.shape)  # (11,) -- (11,3)
+      x41 = np.sum(x31, axis=0)
+      print("x41:", x41.shape)  # 0 -> (3,)
+      return x41
     elif sigma is not None:
       # Exactly matches WLS when sigma is diagonal
       iota = np.ones_like(model.endog)
@@ -1920,7 +1943,14 @@ class RegressionResults(base.LikelihoodModelResults):
   @cache_readonly
   def bse(self):
     """The standard errors of the parameter estimates."""
-    return np.sqrt(np.diag(self.cov_params()))
+    x0 = self.cov_params()
+    print("self.cov_params():", x0.shape)
+
+    x1 = np.diagonal(x0)
+    print("diag:", x1.shape)
+    x2 = np.sqrt(x1)
+    print("sqrt:", x2.shape)
+    return x2
 
   @cache_readonly
   def aic(self):
@@ -2780,34 +2810,46 @@ class RegressionResults(base.LikelihoodModelResults):
 
     rsquared_type = "" if self.k_constant else " (uncentered)"
     top_right = [
-        ("R-squared" + rsquared_type + ":", ["%#8.3f" % self.rsquared]),
+        ("R-squared" + rsquared_type + ":", [4, 5, 6]),
         (
             "Adj. R-squared" + rsquared_type + ":",
-            ["%#8.3f" % self.rsquared_adj],
+            several("%#8.3f", self.rsquared_adj),
         ),
-        ("F-statistic:", ["%#8.4g" % self.fvalue]),
-        ("Prob (F-statistic):", ["%#6.3g" % self.f_pvalue]),
+        ("F-statistic:", several("%#8.4g", self.fvalue)),
+        ("Prob (F-statistic):", several("%#6.3g", self.f_pvalue)),
         ("Log-Likelihood:", None),
-        ("AIC:", ["%#8.4g" % self.aic]),
-        ("BIC:", ["%#8.4g" % self.bic]),
+        ("AIC:", "%#8.4g" % self.aic),
+        ("BIC:", "%#8.4g" % self.bic),
     ]
 
     diagn_left = [
-        ("Omnibus:", ["%#6.3f" % omni]),
-        ("Prob(Omnibus):", ["%#6.3f" % omnipv]),
-        ("Skew:", ["%#6.3f" % skew]),
-        ("Kurtosis:", ["%#6.3f" % kurtosis]),
+        ("Omnibus:", several("%#6.3f", omni)),
+        ("Prob(Omnibus):", several("%#6.3f", omnipv)),
+        ("Skew:", several("%#6.3f", skew)),
+        ("Kurtosis:", several("%#6.3f", kurtosis)),
     ]
 
     diagn_right = [
-        ("Durbin-Watson:", ["%#8.3f" % durbin_watson(self.wresid)]),
-        ("Jarque-Bera (JB):", ["%#8.3f" % jb]),
-        ("Prob(JB):", ["%#8.3g" % jbpv]),
-        ("Cond. No.", ["%#8.3g" % condno]),
+        ("Durbin-Watson:", several("%#8.3f", durbin_watson(self.wresid))),
+        ("Jarque-Bera (JB):", several("%#8.3f", jb)),
+        ("Prob(JB):", several("%#8.3g", jbpv)),
+        ("Cond. No.", several("%#8.3g", condno)),
     ]
 
     if title is None:
       title = self.model.__class__.__name__ + " " + "Regression Results"
+
+    print("nobs", type(self.nobs))
+    print("k_constant", type(self.k_constant))
+    print("df_resid", self.df_resid.shape)
+    print("ssr", self.ssr.shape)
+    print("centered_tss", self.centered_tss.shape)
+    print("rsquared", self.rsquared.shape)
+    print("self.model.wendog", self.model.wendog.shape)
+    print("self.normalized_cov_params.shape", self.normalized_cov_params.shape)
+    print("self.scale", self.scale.shape)
+    print("cov_params.shape", self.cov_params().shape)
+    print("bse", self.bse.shape)
 
     # create summary table instance
     from statsmodels.iolib.summary import Summary
@@ -2821,9 +2863,9 @@ class RegressionResults(base.LikelihoodModelResults):
         xname=xname,
         title=title,
     )
-    smry.add_table_params(
-        self, yname=yname, xname=xname, alpha=alpha, use_t=self.use_t
-    )
+    #    smry.add_table_params(
+    #        self, yname=yname, xname=xname, alpha=alpha, use_t=self.use_t
+    #    )
 
     smry.add_table_2cols(
         self,

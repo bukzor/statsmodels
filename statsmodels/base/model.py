@@ -1449,7 +1449,14 @@ class LikelihoodModelResults(Results):
             else:
                 if scale is None:
                     scale = self.scale
-                cov_p = self.normalized_cov_params * scale
+                # different shapes!?
+                # cov-params is square
+                # scale was scaler before, is now array
+                # use [...,None] to increase dimension
+                print('scale:', scale.shape)
+                print('self.normalized_cov_params:', self.normalized_cov_params.shape)
+                print('scale[...,None,None]:', scale[...,None,None].shape)
+                cov_p = self.normalized_cov_params * scale[..., None, None]
 
         if column is not None:
             column = np.asarray(column)
